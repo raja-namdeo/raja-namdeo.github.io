@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="Agentix">
+  <rect width="1600" height="900" fill="#f7f3ea"/>
+  <g transform="translate(120 250)">
+    <circle cx="70" cy="200" r="18" fill="#161513"/>
+    <circle cx="210" cy="70" r="18" fill="#9a3b1a"/>
+    <circle cx="350" cy="200" r="18" fill="#161513"/>
+    <path d="M88 188 C130 120 150 90 192 78" fill="none" stroke="#161513" stroke-width="6" stroke-linecap="round"/>
+    <path d="M228 82 C270 110 310 150 338 182" fill="none" stroke="#161513" stroke-width="6" stroke-linecap="round"/>
+    <path d="M332 214 C250 250 170 250 88 214" fill="none" stroke="#9a3b1a" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <text x="620" y="400" fill="#161513" font-family="Georgia, 'Iowan Old Style', serif" font-size="112" letter-spacing="-2">Agentix</text>
+  <text x="624" y="470" fill="#5e594f" font-family="Georgia, 'Iowan Old Style', serif" font-size="36">Open-source agent library</text>
+</svg>

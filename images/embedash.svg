@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="Embedash">
+  <rect width="1600" height="900" fill="#f7f3ea"/>
+  <g transform="translate(120 250)">
+    <rect x="0" y="0" width="400" height="280" rx="28" fill="none" stroke="#161513" stroke-width="8"/>
+    <rect x="28" y="28" width="120" height="16" rx="8" fill="#161513" opacity="0.35"/>
+    <rect x="70" y="150" width="48" height="90" rx="8" fill="#161513"/>
+    <rect x="150" y="100" width="48" height="140" rx="8" fill="#9a3b1a"/>
+    <rect x="230" y="70" width="48" height="170" rx="8" fill="#161513"/>
+  </g>
+  <text x="620" y="400" fill="#161513" font-family="Georgia, 'Iowan Old Style', serif" font-size="112" letter-spacing="-2">Embedash</text>
+  <text x="624" y="470" fill="#5e594f" font-family="Georgia, 'Iowan Old Style', serif" font-size="36">Open-source embeddable analytics</text>
+</svg>
