@@ -20,25 +20,16 @@ python3 -m http.server 8765
 
 Open http://127.0.0.1:8765
 
-## Put it on GitHub Pages
+## GitHub Pages
 
-1. On the GitHub account you want on the résumé, create a repository named `raja-namdeo.github.io`.
-2. From this folder, with `index.html` at the repository root (not inside another `portfolio/` directory):
+This folder is the `main` branch of https://github.com/raja-namdeo/raja-namdeo.github.io. The live site is https://raja-namdeo.github.io/.
 
 ```bash
 cd "/home/arav/Documents/Job Hunt/portfolio"
-git init
 git add .
-git commit -m "Publish portfolio site"
-git branch -M main
-git remote add origin git@github.com:raja-namdeo/raja-namdeo.github.io.git
-git push -u origin main
+git commit -m "Update portfolio"
+git push
 ```
-
-3. On GitHub: Settings → Pages → Deploy from branch `main`, folder `/ (root)`.
-4. The site is https://raja-namdeo.github.io/ after the first deploy finishes.
-
-If the repository name is not `raja-namdeo.github.io`, Pages serves it at `https://<user>.github.io/<repo>/`. In that case the writing links still work because they are relative.
 
 ## Other hosts
 
