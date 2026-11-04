@@ -3,12 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>What I owned on Admin Center — Raja Namdeo</title>
-  <meta name="description" content="Raja Namdeo, software engineer at Zendesk, was secondary lead on the Admin Center React migration and unified navigation rolled out to 100% of accounts. Skills: React, TypeScript, Ruby on Rails, platform engineering, system modernisation." />
+  <title>Migrating admin UI, one boundary at a time — Raja Namdeo</title>
+  <meta name="description" content="An engineering guide to platform work on a large Rails codebase: migrating an admin surface to React, designing extension points, CI with GitHub Actions, on-call, and shared BI dashboards." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600&family=Newsreader:opsz,wght@6..72,400;6..72,550&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../styles.css?v=5" />
+  <link rel="stylesheet" href="../styles.css?v=6" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <style>
+    .media { position: relative; aspect-ratio: 16 / 9; width: 100%; overflow: hidden; border-radius: 8px; background: rgba(127,127,127,.10); }
+    .media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .media.contain img { object-fit: contain; }
+    .media-fallback { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; padding: 24px; text-align: center; font: 500 14px/1.5 "Instrument Sans", system-ui, sans-serif; opacity: .7; border: 1px dashed rgba(127,127,127,.5); border-radius: 8px; }
+    .media.is-missing img { display: none; }
+    .media.is-missing .media-fallback { display: flex; }
+    .diagram { width: 100%; height: auto; display: block; color: inherit; }
+    .post pre { overflow-x: auto; padding: 16px; border-radius: 8px; background: rgba(127,127,127,.10); font-size: 14px; line-height: 1.55; }
+    .post code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -42,21 +53,170 @@
     <a href="https://drive.google.com/drive/folders/1Tm4S_pmPTaO8bRm-43lsX8sl1SN7FCRW?usp=drive_link" target="_blank" rel="noopener">Résumé</a>
   </div>
   <main class="post">
-    <p class="eyebrow">Zendesk · Jul 2025 – Apr 2026 · Platform engineering</p>
-    <h1>What I owned on Admin Center</h1>
-    <p>I was a software engineer on the Zendesk platform team in Pune. My title was Software Engineer. On Admin Center I was secondary lead, which means I owned a defined slice of the React migration and I did not own the whole program.</p>
-    <p>The work was system modernisation. Admin Center moved to React as part of unified navigation across Support, Explore, and Admin Center. That navigation reached 100% of Zendesk accounts and cut duplicated UI across those products.</p>
-    <h2>What I shipped</h2>
+    <p class="eyebrow">Engineering · Platform engineering · React, Rails, CI</p>
+    <h1>Migrating a Rails-backed admin UI to React, one boundary at a time</h1>
+    <p>Most platform work is invisible when it goes well. A product team adds a settings page, a navigation entry, or a table, and it looks and behaves like everything around it. They did not copy markup from a neighboring product. They did not ask the platform team for a private favor. They called a contract that was stable enough to build on. This article is about how to build and protect that contract while the technology underneath it changes, using a common and difficult example: moving the admin surface of a large Ruby on Rails application to React.</p>
+    <p>The same ideas apply to any shared UI layer that several teams extend: an internal admin console, a design-system-backed settings area, a navigation shell shared by several products. The stack names change. The failure modes do not.</p>
+
+    <h2>1. What platform engineering actually is</h2>
+    <p>A product engineer is measured by what a feature does for a customer. A platform engineer is measured by how much faster other engineers ship features without lowering quality. That sounds like a slogan until you try to measure it, and then it turns into three concrete questions:</p>
+    <p>First, can a team extend the system without talking to the platform team? If every extension needs a meeting, the platform is a bottleneck with documentation. Second, when the platform changes, do consumers break silently or loudly? Silent breakage is the expensive kind, because it shows up in production, in a team that did not change anything. Third, can the platform be operated? A shared framework has incidents, and someone has to be on call for them with enough instrumentation to find the cause quickly.</p>
+    <p>Everything below follows from taking those three questions seriously: extensibility, safe change, and operability.</p>
+
+    <figure>
+      <div class="media">
+        <img src="../images/writing/data-center.png" width="1280" height="720" loading="lazy" alt="Rows of servers in a university data center" onerror="this.parentNode.classList.add('is-missing')" />
+        <div class="media-fallback" role="img" aria-label="Photo placeholder: rows of servers in a data center">Image unavailable: rows of servers in a data center. A UI platform is shared infrastructure in the same sense: the value is in the common plant, not in any single machine.</div>
+      </div>
+    </figure>
+
+    <h2>2. Why “rewrite it in React” fails as a plan</h2>
+    <p>A migration described as a file-by-file rewrite has no natural end. Pages move, their bugs move with them, and new features keep landing on the old stack because it is the one the team knows. Six months in, two stacks are alive and nobody can say what “done” means. The migration has become a permanent state.</p>
+    <p>The alternative is to treat the migration as a boundary-drawing exercise. Before moving any screen, answer one question: which decisions belong to the framework, and which belong to a product team?</p>
     <ul>
-      <li>React and TypeScript surfaces on Admin Center, inside a large Ruby on Rails codebase.</li>
-      <li>API-first framework work that other product teams extend, instead of copying UI between products.</li>
-      <li>CI/CD on GitHub Actions, including an AI PR-description generator and a code reviewer the platform team adopted.</li>
-      <li>React Testing Library and Cypress coverage so releases had a check before they went out.</li>
-      <li>On-call for storage and API-usage incidents, which is the last mile between the framework and the teams using it.</li>
-      <li>Looker business-intelligence dashboards for account and API usage, used by Sales and Legal.</li>
+      <li><strong>Framework decisions</strong> are the ones every screen shares: the navigation shell, page layout, authentication context, error boundaries, theming, analytics hooks, and the extension points other teams call.</li>
+      <li><strong>Product decisions</strong> are the ones only one product understands: the fields on a particular settings form, the validation of a domain rule, the copy.</li>
     </ul>
-    <p>Cross-functional collaboration here was concrete. Sales and Legal needed one customer view. External teams needed the Admin Center framework to keep shipping. I wrote the interface and stayed for the incident.</p>
-    <p><a href="../index.html#experience">Back to experience</a></p>
+    <p>Once that line is written down, the migration has an order. Move the shell and shared primitives first, because they are the dependency of everything else. Move leaf screens afterward, in whatever order product teams can absorb. A screen on the old stack keeps working inside the new shell, and a screen on the new stack can be rendered by the old server. Neither side has to wait for the other.</p>
+
+    <figure>
+      <svg class="diagram" viewBox="0 0 720 300" role="img" aria-label="Diagram of a strangler migration: a shared React shell hosts new React screens and legacy Rails-rendered screens through a mount boundary, with a feature flag deciding which renders.">
+        <title>Strangler migration with a shared shell</title>
+        <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="system-ui, sans-serif" font-size="13">
+          <rect x="20" y="20" width="680" height="260" rx="10" opacity=".5"/>
+          <text x="36" y="44" fill="currentColor" stroke="none" font-weight="600">Shared shell (React): navigation, layout, auth, error boundary, theme</text>
+          <rect x="50" y="80" width="190" height="80" rx="8"/>
+          <text x="145" y="115" text-anchor="middle" fill="currentColor" stroke="none">New screen</text>
+          <text x="145" y="135" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">React + TypeScript</text>
+          <rect x="265" y="80" width="190" height="80" rx="8" stroke-dasharray="6 4"/>
+          <text x="360" y="115" text-anchor="middle" fill="currentColor" stroke="none">Mount boundary</text>
+          <text x="360" y="135" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">flag per route</text>
+          <rect x="480" y="80" width="190" height="80" rx="8"/>
+          <text x="575" y="115" text-anchor="middle" fill="currentColor" stroke="none">Legacy screen</text>
+          <text x="575" y="135" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">Rails-rendered view</text>
+          <path d="M240 120H265M455 120H480" marker-end="url(#a)"/>
+          <rect x="50" y="195" width="620" height="60" rx="8"/>
+          <text x="360" y="222" text-anchor="middle" fill="currentColor" stroke="none">Extension API: register route, nav item, settings panel</text>
+          <text x="360" y="241" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">versioned, typed, covered by contract tests</text>
+        </g>
+        <defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      </svg>
+      <figcaption>The migration order follows the boundary. The shell and extension API move first; screens move behind a per-route flag, so old and new can coexist for as long as they need to.</figcaption>
+    </figure>
+
+    <h2>3. Running two stacks without a mess</h2>
+    <p>During the migration, Rails and React render in the same product. The practical questions are small and unglamorous, and they decide whether the transition is pleasant.</p>
+    <p><strong>Who owns the page frame?</strong> Pick one. The simplest arrangement is a React shell that owns navigation and layout, with legacy pages rendered inside it. Rails serves a bootstrap payload (current user, account, feature flags, locale) as JSON in the initial response, so the shell does not need a round trip to know who it is rendering for.</p>
+    <p><strong>How does a route choose a renderer?</strong> A route table in the shell maps a path to either a React component or a legacy view, and a flag decides the winner per account or percentage. The flag is also the rollback. If a migrated screen misbehaves for some accounts, turning the flag off is a configuration change, not a revert and redeploy.</p>
+    <p><strong>How do the stacks share state?</strong> As little as possible. The legitimate shared state is identity, permissions, and locale, all of which can be passed down at mount time. Anything richer, such as a shared mutable store between React and legacy JavaScript, creates the coupling the migration is trying to remove.</p>
+    <p><strong>How is data fetched?</strong> If the backend exposes GraphQL, the React side can use a typed client with generated hooks, and the schema becomes the contract between front and back end. If it is REST, a thin typed API layer plays the same role. In both cases, keep fetching in one place so that caching, retries, and error normalization are not reimplemented per screen.</p>
+
+    <pre><code>// A route registry entry: one place decides which renderer wins.
+type RouteEntry = {
+  path: string;
+  react?: () =&gt; Promise&lt;{ default: React.ComponentType }&gt;;
+  legacy?: { viewId: string };
+  flag?: string; // when on, prefer the React renderer
+};
+
+export function resolveRenderer(entry: RouteEntry, flags: Set&lt;string&gt;) {
+  const preferReact = entry.react &amp;&amp; (!entry.flag || flags.has(entry.flag));
+  return preferReact ? { kind: "react" as const } : { kind: "legacy" as const };
+}</code></pre>
+
+    <h2>4. Designing the extension points</h2>
+    <p>An extension point is a promise. Once another team calls it, every change you make to it is a change to their product. That asks for more discipline than internal code does.</p>
+    <ul>
+      <li><strong>Make the surface small.</strong> Every option is a future support request. Start with the two or three things teams demonstrably need, such as registering a route, adding a navigation item, and contributing a settings panel.</li>
+      <li><strong>Type it.</strong> TypeScript types are documentation that fails the build when it is wrong. A consumer who passes the wrong shape should find out in their editor.</li>
+      <li><strong>Version it.</strong> Follow semantic versioning for the package other teams install, and publish a deprecation policy: how long an old API survives, and how consumers will be told.</li>
+      <li><strong>Ship codemods.</strong> When a breaking change is unavoidable, a script that rewrites call sites turns a week of coordination into a pull request each team reviews.</li>
+      <li><strong>Test the contract, not just the component.</strong> A test that registers a panel the way a real consumer does, mounts the shell, and asserts that the panel appears in the right place is worth more than ten snapshot tests of internal components.</li>
+    </ul>
+    <p>It also helps to adopt one rule early: no consumer reaches into internal modules. If something is not exported from the package entry point, it is private, and the build enforces it with an exports map or a lint rule.</p>
+
+    <h2>5. CI as a platform feature</h2>
+    <p>For a shared framework, CI is not an afterthought; it is the enforcement mechanism for the contract. A UI change should fail in the platform’s pipeline before it fails for a team that only consumes the package.</p>
+    <p>A pragmatic GitHub Actions setup for this kind of repository has a few layers:</p>
+    <ul>
+      <li><strong>Fast checks first:</strong> type-check, lint, and unit tests, run on every push and cached aggressively (dependency cache keyed on the lockfile).</li>
+      <li><strong>Component and integration tests:</strong> React Testing Library, querying by role and accessible name instead of class names, so the tests describe behavior a user or assistive technology would notice.</li>
+      <li><strong>End-to-end tests:</strong> Cypress for the handful of flows that cross the Rails/React boundary, such as loading the shell, navigating between a legacy page and a migrated one, and saving a setting. Keep this set small and deterministic. A large flaky end-to-end suite teaches everyone to ignore red builds.</li>
+      <li><strong>Consumer smoke tests:</strong> build a minimal example consumer against the candidate version of the package. If the example cannot compile, the release does not go out.</li>
+    </ul>
+
+    <pre><code>name: platform-ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test -- --ci
+
+  e2e:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npx cypress run --browser chrome</code></pre>
+
+    <figure>
+      <div class="media contain">
+        <img src="../images/writing/continuous-delivery.svg" width="1280" height="720" loading="lazy" alt="Diagram of a continuous delivery pipeline from code to production" onerror="this.parentNode.classList.add('is-missing')" />
+        <div class="media-fallback" role="img" aria-label="Diagram placeholder: continuous delivery pipeline">Image unavailable: a continuous delivery pipeline running from commit, through build and test stages, to production.</div>
+      </div>
+      <figcaption>Continuous delivery as a path from change to production. A change is not finished when the branch is green on a laptop. Diagram by Grégoire Détrez, via Wikimedia Commons, CC BY-SA 4.0.</figcaption>
+    </figure>
+
+    <h3>Automation that assists review without replacing it</h3>
+    <p>Two pieces of automation are worth adding next to the ordinary checks: a bot that drafts pull-request descriptions from the diff, and an AI-assisted code reviewer. Both are useful if their role is understood. A generated description helps the next reader when it explains <em>why</em> the change exists and what to look at, and hurts when it restates the diff in full sentences. A model reviewer is good at pointing at risky patterns (a missing dependency in a hook, an unhandled promise, an accessibility regression) and is not a reviewer in the accountable sense. A person still decides. Treat these as aids inside the existing review, and measure them by whether reviewers keep the suggestions they accept.</p>
+
+    <h2>6. Operating what you ship</h2>
+    <p>A framework that cannot be operated is a library with a marketing name. Platform teams carry pager duty because the failures that matter (storage limits, API usage spikes, authentication edge cases) are exactly the ones product teams cannot diagnose from inside their own feature.</p>
+    <p>Three habits make on-call survivable:</p>
+    <ul>
+      <li><strong>Structured, searchable errors.</strong> A boundary around each mounted screen reports the screen name, framework version, and account identifier. “Something went wrong” with no context is how an hour disappears.</li>
+      <li><strong>Runbooks written after each incident.</strong> The fix is a few lines; the diagnosis is what you want to preserve: which dashboard to open, which flag to flip, who owns the downstream service.</li>
+      <li><strong>Post-incident reading of your own API.</strong> The incident is where you learn whether the API you published matches the failure the caller actually hits. If every caller wraps your function in the same retry code, the retry belongs in your function.</li>
+    </ul>
+
+    <h2>7. Rolling out to everyone</h2>
+    <p>A rollout is a sequence of controlled exposures, and each stage needs a defined way to stop. A reasonable pattern is internal accounts first, then a small percentage of real accounts, then wider cohorts, with a kill switch at every step and a metric that tells you whether the new path is at least as healthy as the old one: error rate, time to interactive, and task completion for the flows that matter.</p>
+    <p>When the last cohort turns over, “100% of accounts” is the visible result. It is also the least interesting number. The engineering is the boundary, the flag, the contract tests, and the runbook that made the percentage safe to raise.</p>
+
+    <h2>8. One BI view for several audiences</h2>
+    <p>Platform thinking extends past code. In many companies, Sales, Legal, Support, and Engineering each pull the same customer data into a different spreadsheet and then disagree about the numbers. A shared dashboard in a BI tool such as Looker solves this only if it is built like an interface.</p>
+    <p>That means a single definition of each metric in the semantic layer (for example, one definition of “active API usage” written once as a measure), explicit grain and filters, and permissions that expose what each audience should see and nothing else. Sales uses the view in a customer conversation; Legal uses the same view for the same account when a contract question comes up; neither files a ticket with engineering for a one-off export. When two teams cannot trust the same numbers, the dashboard has failed the same way a broken API fails, and it should be debugged the same way: find the divergent definition, fix it at the source, and add a test or a data check so it cannot drift silently.</p>
+
+    <h2>9. A checklist for the next migration</h2>
+    <ul>
+      <li>Write down the framework/product boundary before moving a screen.</li>
+      <li>Migrate the shell and shared primitives first; migrate leaf screens behind per-route flags.</li>
+      <li>Keep the extension API small, typed, versioned, and covered by contract tests.</li>
+      <li>Put a consumer smoke test in CI so breakage appears in the platform repository first.</li>
+      <li>Keep the end-to-end suite small enough to trust.</li>
+      <li>Instrument every mounted screen; write runbooks after incidents.</li>
+      <li>Roll out in cohorts with a kill switch and a health metric at each stage.</li>
+      <li>Define shared metrics once, and expose them through one dashboard.</li>
+    </ul>
+    <p>The common thread is a preference for a small contract another team can call on a Tuesday over a large rewrite that only its author can explain. Platform engineering is ownership of a slice end to end, plus the discipline to leave the rest of the system alone.</p>
+    <p><a href="../index.html#writing">Back to writing</a></p>
   </main>
   <script src="../main.js"></script>
 </body>

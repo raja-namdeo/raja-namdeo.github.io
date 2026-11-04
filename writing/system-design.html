@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Two small systems, drawn the long way — Raja Namdeo</title>
+  <meta name="description" content="A system design note: a bounded agent runtime and an embeddable dashboard, with their boundaries, failure modes, interfaces, tests, and what to leave out of the first version." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600&family=Newsreader:opsz,wght@6..72,400;6..72,550&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css?v=6" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <style>
+    .media { position: relative; aspect-ratio: 16 / 9; width: 100%; overflow: hidden; border-radius: 8px; background: rgba(127,127,127,.10); }
+    .media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .media.contain img { object-fit: contain; }
+    .media-fallback { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; padding: 24px; text-align: center; font: 500 14px/1.5 "Instrument Sans", system-ui, sans-serif; opacity: .7; border: 1px dashed rgba(127,127,127,.5); border-radius: 8px; }
+    .media.is-missing img { display: none; }
+    .media.is-missing .media-fallback { display: flex; }
+    .diagram { width: 100%; height: auto; display: block; color: inherit; }
+    .post pre { overflow-x: auto; padding: 16px; border-radius: 8px; background: rgba(127,127,127,.10); font-size: 14px; line-height: 1.55; }
+    .post code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="mark" href="../index.html" aria-label="Raja Namdeo, home"><img src="../favicon.svg" width="32" height="32" alt="" /></a>
+      <nav class="nav" aria-label="Page">
+        <a href="../index.html#about">About</a>
+        <a href="../index.html#experience">Experience</a>
+        <a href="../index.html#work">Work</a>
+        <a href="../index.html#skills">Skills</a>
+        <a href="../index.html#writing">Writing</a>
+        <a href="../index.html#contact">Contact</a>
+      </nav>
+      <div class="top-actions">
+        <a class="text-link" href="https://linkedin.com/in/raja-namdeo" target="_blank" rel="noopener">LinkedIn</a>
+        <a class="text-link" href="https://github.com/raja-namdeo" target="_blank" rel="noopener">GitHub</a>
+        <a class="btn" href="https://drive.google.com/drive/folders/1Tm4S_pmPTaO8bRm-43lsX8sl1SN7FCRW?usp=drive_link" target="_blank" rel="noopener">Résumé</a>
+      </div>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="mobile-nav">Menu</button>
+    </div>
+  </header>
+  <div class="mobile-nav" id="mobile-nav" hidden>
+    <a href="../index.html#about">About</a>
+    <a href="../index.html#experience">Experience</a>
+    <a href="../index.html#work">Work</a>
+    <a href="../index.html#skills">Skills</a>
+    <a href="../index.html#writing">Writing</a>
+    <a href="../index.html#contact">Contact</a>
+    <a href="https://linkedin.com/in/raja-namdeo" target="_blank" rel="noopener">LinkedIn</a>
+    <a href="https://github.com/raja-namdeo" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://drive.google.com/drive/folders/1Tm4S_pmPTaO8bRm-43lsX8sl1SN7FCRW?usp=drive_link" target="_blank" rel="noopener">Résumé</a>
+  </div>
+  <main class="post">
+    <p class="eyebrow">System design · Agents and embeds</p>
+    <h1>Two small systems, drawn the long way</h1>
+    <p>System design interviews reward a diagram that fills the whiteboard. Production rewards the opposite: a boundary you can explain to a teammate who was not in the room, and a first version willing to be small. This note designs two systems the way a team blog post would. Start from the user, name the parts, say what fails, and say what is deliberately left out. The first is a bounded agent runtime: a small TypeScript library for adding a tool-using model to an existing web app. The second is an embeddable dashboard: a package that mounts charts into any page from a JSON config.</p>
+    <p>They look unrelated, but they share a design rule. If a box on the diagram does not have a failure mode, it is decoration.</p>
+
+    <h2>Part one: a bounded agent runtime</h2>
+    <h3>The user and the contract</h3>
+    <p>The user of the library is a developer who wants a tool-using model inside an existing web app. They do not want a platform; they want a function. They pass a prompt, a list of tools, and a string. They get back an answer and a trace. The trace is not a nice-to-have. Without it, a bad answer is a mystery, and mysteries do not get fixed.</p>
+
+    <figure>
+      <div class="media contain">
+        <img src="../images/writing/client-server.svg" width="1280" height="720" loading="lazy" alt="Diagram of clients sending requests to a server" onerror="this.parentNode.classList.add('is-missing')" />
+        <div class="media-fallback" role="img" aria-label="Diagram placeholder: clients sending requests to a server">Image unavailable: clients on one side, a server on the other. An agent loop has the same shape: the app is the client, the model is a remote dependency, and the tool layer is where retries and limits live.</div>
+      </div>
+      <figcaption>Clients on one side, a server on the other. An agent loop is the same shape if you are honest about it. Diagram by Lubaochuan, via Wikimedia Commons, CC BY-SA 4.0.</figcaption>
+    </figure>
+
+    <h3>Five parts, kept as types</h3>
+    <p>Resist the urge to turn each concept into a service. Keep them as types in one package:</p>
+    <ul>
+      <li><strong>Tool:</strong> a name, a JSON schema describing its arguments, and an async function.</li>
+      <li><strong>Provider:</strong> one method, <code>complete</code>, that accepts messages and tool definitions and returns either text or tool calls.</li>
+      <li><strong>Memory:</strong> an object the loop can read and write, with an in-memory implementation so tests do not need a database.</li>
+      <li><strong>Loop:</strong> the only place that decides whether to call the model again.</li>
+      <li><strong>Eval runner:</strong> a separate function that builds an agent, runs cases, and scores them. The loop does not know it is being graded.</li>
+    </ul>
+
+    <pre><code>export interface Tool&lt;A = unknown, R = unknown&gt; {
+  name: string;
+  description: string;
+  schema: Record&lt;string, unknown&gt;;      // JSON Schema for args
+  run(args: A): Promise&lt;R&gt;;
+}
+
+export type ModelTurn =
+  | { kind: "text"; text: string }
+  | { kind: "tool_calls"; calls: { id: string; name: string; args: unknown }[] };
+
+export interface Provider {
+  complete(messages: Message[], tools: ToolDef[]): Promise&lt;ModelTurn&gt;;
+}
+
+export interface Memory {
+  load(sessionId: string): Promise&lt;Message[]&gt;;
+  save(sessionId: string, messages: Message[]): Promise&lt;void&gt;;
+}
+
+export type StopReason = "answer" | "max_steps" | "tool_error" | "provider_error";
+export interface RunResult { output: string; trace: TraceEvent[]; stop: StopReason }</code></pre>
+
+    <h3>The loop and its hard limit</h3>
+    <p>An agent that may call tools forever will, on a bad day, call tools forever. A maximum step count is the load shedder: when it trips, the run still returns, with a trace and an explicit stop reason, so the caller can show a failure instead of a spinner. A short, explained failure beats a long, unexplained success.</p>
+
+    <pre><code>export async function runAgent(opts: {
+  provider: Provider; tools: Tool[]; memory: Memory;
+  sessionId: string; prompt: string; maxSteps?: number;
+}): Promise&lt;RunResult&gt; {
+  const { provider, tools, memory, sessionId, prompt, maxSteps = 8 } = opts;
+  const messages = [...(await memory.load(sessionId)), { role: "user", content: prompt }];
+  const trace: TraceEvent[] = [];
+
+  for (let step = 0; step &lt; maxSteps; step++) {
+    const turn = await provider.complete(messages, tools.map(toDef));
+    trace.push({ step, turn });
+    if (turn.kind === "text") {
+      await memory.save(sessionId, messages);
+      return { output: turn.text, trace, stop: "answer" };
+    }
+    for (const call of turn.calls) {
+      const tool = tools.find((t) =&gt; t.name === call.name);
+      const result = tool ? await safeRun(tool, call.args) : { error: "unknown tool" };
+      trace.push({ step, call, result });
+      messages.push({ role: "tool", toolCallId: call.id, content: JSON.stringify(result) });
+    }
+  }
+  return { output: "", trace, stop: "max_steps" };
+}</code></pre>
+
+    <figure>
+      <svg class="diagram" viewBox="0 0 720 270" role="img" aria-label="Agent loop diagram: application calls runAgent; the loop calls a provider interface and tools in turn, increments a step counter on each iteration, and returns an answer with a trace or stops at the step limit.">
+        <title>Bounded agent loop</title>
+        <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="system-ui, sans-serif" font-size="13">
+          <rect x="15" y="95" width="110" height="60" rx="8"/>
+          <text x="70" y="122" text-anchor="middle" fill="currentColor" stroke="none">Application</text>
+          <text x="70" y="140" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">prompt + tools</text>
+          <rect x="165" y="30" width="400" height="210" rx="10" stroke-dasharray="6 4"/>
+          <text x="180" y="52" fill="currentColor" stroke="none" font-weight="600">runAgent loop</text>
+          <rect x="190" y="75" width="150" height="55" rx="8"/>
+          <text x="265" y="107" text-anchor="middle" fill="currentColor" stroke="none">Provider.complete</text>
+          <rect x="390" y="75" width="150" height="55" rx="8"/>
+          <text x="465" y="107" text-anchor="middle" fill="currentColor" stroke="none">Tool.run</text>
+          <path d="M340 100H390M465 130V170H265V130" marker-end="url(#d)"/>
+          <text x="365" y="165" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">step counter on the arrow</text>
+          <text x="365" y="215" text-anchor="middle" fill="currentColor" stroke="none">step &gt;= maxSteps: stop with reason</text>
+          <rect x="595" y="95" width="110" height="60" rx="8"/>
+          <text x="650" y="122" text-anchor="middle" fill="currentColor" stroke="none">Result</text>
+          <text x="650" y="140" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">output + trace</text>
+          <path d="M125 125H165M565 125H595" marker-end="url(#d)"/>
+        </g>
+        <defs><marker id="d" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      </svg>
+      <figcaption>The step counter is on the arrow. The loop is the only component allowed to call the model again.</figcaption>
+    </figure>
+
+    <h3>The provider interface is the load-bearing choice</h3>
+    <p>Use an aggregator such as OpenRouter as the reference implementation, since one key reaches many models. But the loop must never import that HTTP client. It talks to the <code>Provider</code> interface. A second provider is a second class, not a rewrite, and a fake provider that returns scripted turns makes the loop testable without network access or money.</p>
+    <p>Leave out a gateway, a queue, and a multi-tenant key store. API keys stay in the application’s environment. A library that sends your key to a service you did not choose is not one anyone should install.</p>
+
+    <h3>Failure modes to name up front</h3>
+    <ul>
+      <li><strong>Runaway loop:</strong> handled by the step limit and a <code>max_steps</code> stop reason.</li>
+      <li><strong>Malformed tool arguments:</strong> validate against the schema and return the validation error to the model as the tool result so it can correct itself, within the step budget.</li>
+      <li><strong>Tool throws or hangs:</strong> wrap each call with a timeout and catch errors; record them in the trace.</li>
+      <li><strong>Provider errors and rate limits:</strong> retry with backoff inside the provider adapter, not in the loop; surface a <code>provider_error</code> stop reason when retries are exhausted.</li>
+      <li><strong>Prompt injection through tool output:</strong> treat tool results as untrusted data; do not give the model tools whose effects you would not allow a hostile input to trigger.</li>
+      <li><strong>Unbounded memory:</strong> cap or summarize history so context size cannot grow without limit.</li>
+    </ul>
+
+    <h3>Evaluation is part of the design</h3>
+    <p>An evaluation case is an input plus a check. The check can be exact, or it can inspect the trace: “the agent called this tool,” “it did not call that one,” “it stopped within three steps.” A suite that cannot fail on purpose is not a suite, so keep one case written to fail if someone loosens the step limit or removes a tool. The principle is to score the answer before a person has to trust it.</p>
+
+    <pre><code>const cases = [
+  {
+    id: "uses-lookup-before-answering",
+    input: "What is the status of order 1042?",
+    check: (r: RunResult) =&gt;
+      r.stop === "answer" &amp;&amp; r.trace.some((e) =&gt; "call" in e &amp;&amp; e.call.name === "lookup_order"),
+  },
+  {
+    id: "must-stop-within-limit",   // fails if the step guard is loosened
+    input: "Keep calling tools until you are sure.",
+    check: (r: RunResult) =&gt; r.stop === "max_steps" &amp;&amp; r.trace.length &lt;= 20,
+  },
+];</code></pre>
+
+    <h2>Part two: an embeddable dashboard</h2>
+    <h3>A different user, a different contract</h3>
+    <p>The user here is a product engineer who wants a chart on a page they do not want to rebuild. They already have the numbers. They do not want to adopt a charting framework, a design system, and a build step to show three bars. The package mounts a dashboard into a DOM node from a JSON config: a title and a list of widgets, each a bar chart, a line chart, or a single metric. The host page loads one script and keeps its own data.</p>
+
+    <pre><code>// The whole contract: a config and a mount function.
+type Widget =
+  | { type: "metric"; label: string; value: number | null; unit?: string }
+  | { type: "bar" | "line"; label: string; series: { x: string; y: number }[] };
+
+interface DashboardConfig { version: 1; title: string; widgets: Widget[]; theme?: "light" | "dark" }
+
+declare function mountDashboard(el: HTMLElement | null, config: DashboardConfig): {
+  update(next: DashboardConfig): void;
+  destroy(): void;
+};</code></pre>
+
+    <figure>
+      <svg class="diagram" viewBox="0 0 720 240" role="img" aria-label="Embed diagram: a host page with its own data calls mountDashboard with a JSON config; the package renders into an isolated container inside the host page; a future server can produce the same JSON.">
+        <title>Host page and embedded dashboard</title>
+        <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="system-ui, sans-serif" font-size="13">
+          <rect x="15" y="20" width="450" height="200" rx="10"/>
+          <text x="30" y="42" fill="currentColor" stroke="none" font-weight="600">Host page (their product)</text>
+          <rect x="35" y="70" width="140" height="60" rx="8"/>
+          <text x="105" y="97" text-anchor="middle" fill="currentColor" stroke="none">Host data</text>
+          <text x="105" y="115" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">already computed</text>
+          <rect x="250" y="70" width="190" height="130" rx="8" stroke-dasharray="6 4"/>
+          <text x="345" y="92" text-anchor="middle" fill="currentColor" stroke="none">Mount node</text>
+          <rect x="268" y="108" width="154" height="70" rx="8"/>
+          <text x="345" y="136" text-anchor="middle" fill="currentColor" stroke="none">Dashboard package</text>
+          <text x="345" y="154" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">validates, renders</text>
+          <path d="M175 100H250" marker-end="url(#e)"/>
+          <text x="212" y="92" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">JSON</text>
+          <rect x="520" y="70" width="170" height="60" rx="8" stroke-dasharray="6 4"/>
+          <text x="605" y="97" text-anchor="middle" fill="currentColor" stroke="none">Later: a server</text>
+          <text x="605" y="115" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">returns the same JSON</text>
+          <path d="M520 100H450" marker-end="url(#e)" stroke-dasharray="4 3"/>
+        </g>
+        <defs><marker id="e" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      </svg>
+      <figcaption>The host page sits outside the package’s box. A server can come later, as long as it produces the same JSON.</figcaption>
+    </figure>
+
+    <h3>Why not start with a backend</h3>
+    <p>A Rails or Node API backed by Postgres and Redis is a reasonable second version. A cache in front of a query is a real design, and it is the wrong first design if nobody has embedded a chart yet. The first contract is the config and the mount function; data is an array of points the host already computed. When that works, a later server can return the same JSON, and the widget does not need to care which side produced it. That is the seam.</p>
+    <p>The inverse mistake is a widget that fetches inside itself before the contract is stable. Then every host is stuck with your URL structure, your auth scheme, and your caching rules.</p>
+
+    <h3>Embedding concerns that matter in practice</h3>
+    <ul>
+      <li><strong>Style isolation.</strong> Host CSS will leak into your markup and yours into theirs. Render into a Shadow DOM root, or namespace every class and avoid global selectors.</li>
+      <li><strong>Theming.</strong> Expose a small set of CSS custom properties (colors, font family, spacing) and a <code>theme</code> option; do not ship a design system.</li>
+      <li><strong>Accessibility.</strong> Every chart needs a text alternative: a label, a summary, and a visually hidden data table, so the dashboard is usable with a screen reader.</li>
+      <li><strong>Size.</strong> Render with SVG and no heavy dependencies. A dashboard package that adds 300 KB to a page has failed its main promise.</li>
+      <li><strong>Security.</strong> Never insert config strings as HTML. Use text nodes, so a label containing markup cannot inject script into the host page.</li>
+      <li><strong>Versioning.</strong> The <code>version</code> field in the config lets the package reject or migrate configs from the future or the past instead of rendering garbage.</li>
+      <li><strong>Lifecycle.</strong> <code>destroy()</code> removes listeners and DOM, so single-page apps can mount and unmount without leaks.</li>
+    </ul>
+
+    <h3>Failure modes for the first version</h3>
+    <p>Name them before writing code, because these are the cases a host will hit on the first afternoon:</p>
+    <ul>
+      <li><strong>Unknown chart type:</strong> throw a clear error or render a visible, quiet error state; never a blank page that looks like a successful load.</li>
+      <li><strong>Empty series:</strong> render an explicit “no data” state.</li>
+      <li><strong>Missing mount node:</strong> throw immediately, with a message that includes the selector or element that was passed.</li>
+      <li><strong>Metric with no value:</strong> say so, for example with an em dash and a label, rather than showing zero.</li>
+      <li><strong>A bar chart with one point:</strong> still draw it.</li>
+      <li><strong>Very long labels and very large numbers:</strong> truncate with a tooltip and format with locale-aware abbreviations.</li>
+    </ul>
+
+    <pre><code>import { describe, it, expect } from "vitest";
+import { mountDashboard } from "./index";
+
+describe("mountDashboard", () =&gt; {
+  it("throws a clear error when the mount node is missing", () =&gt; {
+    expect(() =&gt; mountDashboard(null, { version: 1, title: "T", widgets: [] }))
+      .toThrow(/mount node/i);
+  });
+
+  it("renders an explicit empty state for an empty series", () =&gt; {
+    const el = document.createElement("div");
+    mountDashboard(el, { version: 1, title: "T", widgets: [{ type: "bar", label: "Sales", series: [] }] });
+    expect(el.textContent).toMatch(/no data/i);
+  });
+
+  it("draws a bar chart with a single point", () =&gt; {
+    const el = document.createElement("div");
+    mountDashboard(el, { version: 1, title: "T", widgets: [{ type: "bar", label: "A", series: [{ x: "Q1", y: 4 }] }] });
+    expect(el.querySelectorAll("[data-bar]").length).toBe(1);
+  });
+});</code></pre>
+
+    <h2>What to leave out of both</h2>
+    <p>Multi-agent planners, drag-and-drop dashboard builders, accounts, and billing all photograph well and help no first caller. Also leave out the claim that either package is a platform. A platform is what you have after other people depend on you and you have operated the dependency. Until then these are libraries with examples, tests, and a place to put an API key. That is the right size until someone other than the author is blocked on them.</p>
+    <p>The same discipline suggests a rough order of work. For the agent runtime: the types, a fake provider, the loop with its step limit, two real tools, the trace, and an evaluation runner with a case that is meant to fail. For the dashboard: the config types and validation, the three widget renderers, error states, the mount and destroy lifecycle, and the tests above. Only after both work end to end is it worth asking what a hosted version would need.</p>
+
+    <h2>The one picture to defend</h2>
+    <p>If you had to draw one picture in an interview and then defend it, draw the agent loop with a step counter on the arrow, and the dashboard with the host page outside the box. In both, the interesting design is the line. Everything inside the line can change without anyone noticing. Everything outside it is someone else’s product.</p>
+    <p><a href="../index.html#writing">Back to writing</a></p>
+  </main>
+
+  <script src="../main.js"></script>
+</body>
+</html>

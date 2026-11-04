@@ -3,12 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>A public API for an image pipeline — Raja Namdeo</title>
-  <meta name="description" content="At Persistent Systems, Raja Namdeo designed a C++17 and OpenCV image-processing library with feature detection, preprocessing, RAII, and a public API used by downstream teams. He also migrated a legacy frontend to React 18." />
+  <title>Designing a public API for a C++ image pipeline — Raja Namdeo</title>
+  <meta name="description" content="An engineering guide to building a C++17 and OpenCV image-processing library with a narrow public API: RAII, stage design, error handling, build scripts, testing, and the same ownership principle in a React 18 migration." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600&family=Newsreader:opsz,wght@6..72,400;6..72,550&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../styles.css?v=5" />
+  <link rel="stylesheet" href="../styles.css?v=6" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <style>
+    .media { position: relative; aspect-ratio: 16 / 9; width: 100%; overflow: hidden; border-radius: 8px; background: rgba(127,127,127,.10); }
+    .media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .media.contain img { object-fit: contain; }
+    .media-fallback { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; padding: 24px; text-align: center; font: 500 14px/1.5 "Instrument Sans", system-ui, sans-serif; opacity: .7; border: 1px dashed rgba(127,127,127,.5); border-radius: 8px; }
+    .media.is-missing img { display: none; }
+    .media.is-missing .media-fallback { display: flex; }
+    .diagram { width: 100%; height: auto; display: block; color: inherit; }
+    .post pre { overflow-x: auto; padding: 16px; border-radius: 8px; background: rgba(127,127,127,.10); font-size: 14px; line-height: 1.55; }
+    .post code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -42,18 +53,164 @@
     <a href="https://drive.google.com/drive/folders/1Tm4S_pmPTaO8bRm-43lsX8sl1SN7FCRW?usp=drive_link" target="_blank" rel="noopener">Résumé</a>
   </div>
   <main class="post">
-    <p class="eyebrow">Persistent Systems · Jan 2023 – Jun 2025 · C++17</p>
-    <h1>A public API for an image pipeline</h1>
-    <p>At Persistent Systems I designed an image-processing library in C++17 and OpenCV. Feature detection and preprocessing lived behind one public API. Downstream teams adopted that API. They asked for features. They did not manage the pipeline’s buffers.</p>
-    <h2>What the C++ actually was</h2>
+    <p class="eyebrow">Engineering · C++17 · OpenCV · API design</p>
+    <h1>Designing a public API for a C++ image pipeline</h1>
+    <p>Computer vision code tends to rot in a predictable way. One engineer writes a working script: open an image, convert it to grayscale, blur it, run a detector, draw the result. A second engineer copies it, tweaks it, and misses a branch. A third copies the second. Within a year there are six slightly different pipelines, three of them leak memory on error paths, and a bug report says the detector is “random.” It is not random. The integrations are.</p>
+    <p>A public API is the structural answer to that decay. This article walks through how to design one for a C++17 image-processing library built on OpenCV, covering feature detection and the preprocessing it depends on, so that other teams can ask for behavior without managing buffers, ordering, or cleanup. It closes with a parallel from front-end work, because the underlying principle is the same.</p>
+
+    <h2>1. The problem with free functions</h2>
+    <p>OpenCV is a toolbox, and a toolbox gives you freedom you often do not want. A typical detection flow involves reading an image, converting color space, normalizing, suppressing noise, and then detecting features. Exposed as four free functions with overlapping arguments, each team will choose its own order and parameters. Some will forget to normalize, some will blur twice, and some will hold temporary matrices longer than needed.</p>
+    <p>The goal of the library is to move those decisions behind one boundary. The library owns the pipeline: the order of stages, the intermediate buffers, and the cleanup. The caller owns the request (which image, which detector, which options) and the result. That division makes the integration boring, which is exactly what you want from infrastructure.</p>
+
+    <figure>
+      <div class="media">
+        <img src="../images/writing/canny.png" width="1280" height="720" loading="lazy" alt="An image beside the same image after Canny edge detection" onerror="this.parentNode.classList.add('is-missing')" />
+        <div class="media-fallback" role="img" aria-label="Image placeholder: a photograph beside its Canny edge-detected version">Image unavailable: a photograph shown beside the same photograph after Canny edge detection, a common preprocessing step before feature work.</div>
+      </div>
+      <figcaption>Canny edge detection, a standard preprocessing step ahead of many feature pipelines. Illustrative only. Image by Dan Ringwald, via Wikimedia Commons, CC0.</figcaption>
+    </figure>
+
+    <h2>2. The shape of a good surface</h2>
+    <p>A narrow API is easier to keep stable. The public header should expose a small number of value types and one or two entry points, and nothing else. A few rules help:</p>
     <ul>
-      <li>C++17: OOP, the STL, templates, and RAII, so ownership stayed in the pipeline.</li>
-      <li>OpenCV for feature detection and the preprocessing those detectors need.</li>
-      <li>Bash on Linux for build, deploy, and environment setup across the SDLC.</li>
-      <li>A separate system-modernisation track: a legacy frontend moved to React 18, including concurrent rendering and hooks, plus the cross-browser bugs that upgrade exposed.</li>
+      <li><strong>Hide the implementation.</strong> Use the pimpl idiom (a pointer to an opaque implementation class) so that headers do not change when internals do. This keeps compile times low for consumers and keeps ABI changes contained.</li>
+      <li><strong>Be careful with third-party types in public headers.</strong> If <code>cv::Mat</code> appears in your signatures, every consumer is coupled to your OpenCV version. Consider a thin <code>Image</code> value type (width, height, channels, a view over contiguous bytes) and convert at the boundary. If your consumers already use OpenCV and you accept the coupling, document the supported version range.</li>
+      <li><strong>Prefer value semantics.</strong> Results are returned by value, using move semantics to avoid copies. Avoid out-parameters and raw owning pointers.</li>
+      <li><strong>Make the options an explicit struct</strong> with defaults, so adding an option does not change a function signature.</li>
     </ul>
-    <p>Before that job I had worked through 600+ problems in C++, including trees, graphs, and dynamic programming. That practice is the foundation under the library. The library is the work I want read first.</p>
-    <p><a href="../index.html#experience">Back to experience</a></p>
+
+    <pre><code>// include/vision/pipeline.hpp: the entire public surface
+#pragma once
+#include &lt;cstdint&gt;
+#include &lt;memory&gt;
+#include &lt;string&gt;
+#include &lt;variant&gt;
+#include &lt;vector&gt;
+
+namespace vision {
+
+struct ImageView {            // non-owning view over caller memory
+  const std::uint8_t* data;
+  int width, height, channels;
+  std::size_t stride;
+};
+
+struct Keypoint { float x, y, size, response; };
+
+enum class Error { EmptyImage, UnsupportedFormat, DetectorFailed };
+
+struct Options {
+  enum class Detector { Orb, Fast, Harris } detector = Detector::Orb;
+  int max_features = 500;
+  bool normalize = true;
+  float blur_sigma = 1.2f;
+};
+
+using Result = std::variant&lt;std::vector&lt;Keypoint&gt;, Error&gt;;
+
+class Pipeline {
+ public:
+  explicit Pipeline(Options opts = {});
+  ~Pipeline();
+  Pipeline(Pipeline&amp;&amp;) noexcept;
+  Pipeline&amp; operator=(Pipeline&amp;&amp;) noexcept;
+  Pipeline(const Pipeline&amp;) = delete;
+  Pipeline&amp; operator=(const Pipeline&amp;) = delete;
+
+  Result detect(const ImageView&amp; image);
+
+ private:
+  struct Impl;
+  std::unique_ptr&lt;Impl&gt; impl_;
+};
+
+}  // namespace vision</code></pre>
+    <p>With this surface, a caller writes <code>pipeline.detect(view)</code> and handles a vector of keypoints or an error. There is no cleanup function to forget and no stage ordering to get wrong.</p>
+
+    <h2>3. RAII: making cleanup impossible to forget</h2>
+    <p>People do not remember cleanup functions. Destructors run anyway. The central implementation rule is that every resource has an owner whose lifetime ends the resource. In an image pipeline, that includes working matrices, scratch buffers, detector objects, and any handles the stages acquire.</p>
+    <p>A stage that allocates in its constructor and releases in its destructor is safe across early returns, exceptions, and the extra branch someone adds during a bug fix and forgets to clean up. Prefer <code>std::unique_ptr</code> for ownership, <code>std::vector</code> for buffers, and avoid manual <code>new</code> and <code>delete</code>. OpenCV’s own <code>cv::Mat</code> is reference-counted, so be explicit about when you share data and when you deep-copy. Pass-by-const-reference does not copy, but an accidental <code>cv::Mat b = a;</code> followed by an in-place write aliases the same pixels.</p>
+    <p>For scratch buffers, a reusable workspace owned by the pipeline avoids per-call allocation in hot loops: allocate once at the maximum size you have seen, and reuse it. That is a performance decision and a lifetime decision at the same time, and RAII keeps both in one place.</p>
+
+    <h2>4. Stages and templates, without inheritance for its own sake</h2>
+    <p>Internally, the pipeline is a short sequence: decode or wrap, convert to grayscale, optionally normalize contrast, suppress noise, detect, and filter. Each stage has the same shape, taking an input and producing an output, and that is where templates earn their place. A stage can be modeled as a callable with a known input and output type, composed at compile time, instead of a virtual base class with a runtime registry nobody needs.</p>
+    <p>Use virtual dispatch where behavior truly varies at runtime, such as selecting a detector from options, and templates or plain functions where it does not. A hierarchy introduced to match a diagram is a cost you pay on every future change.</p>
+
+    <figure>
+      <svg class="diagram" viewBox="0 0 720 220" role="img" aria-label="Pipeline diagram: caller passes an image view and options into a public API boundary; inside, stages normalize, denoise, and detect run in a fixed order with library-owned buffers; the caller receives keypoints or an error.">
+        <title>Library-owned pipeline behind a public boundary</title>
+        <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="system-ui, sans-serif" font-size="13">
+          <rect x="15" y="70" width="110" height="60" rx="8"/>
+          <text x="70" y="97" text-anchor="middle" fill="currentColor" stroke="none">Caller</text>
+          <text x="70" y="115" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">view + options</text>
+          <rect x="150" y="20" width="420" height="180" rx="10" stroke-dasharray="6 4"/>
+          <text x="165" y="42" fill="currentColor" stroke="none" font-weight="600">vision::Pipeline (buffers owned here)</text>
+          <rect x="170" y="80" width="100" height="50" rx="8"/>
+          <text x="220" y="110" text-anchor="middle" fill="currentColor" stroke="none">Normalize</text>
+          <rect x="300" y="80" width="100" height="50" rx="8"/>
+          <text x="350" y="110" text-anchor="middle" fill="currentColor" stroke="none">Denoise</text>
+          <rect x="430" y="80" width="120" height="50" rx="8"/>
+          <text x="490" y="110" text-anchor="middle" fill="currentColor" stroke="none">Detect + filter</text>
+          <path d="M125 100H150M270 105H300M400 105H430M570 100H595" marker-end="url(#c)"/>
+          <rect x="595" y="70" width="110" height="60" rx="8"/>
+          <text x="650" y="97" text-anchor="middle" fill="currentColor" stroke="none">Result</text>
+          <text x="650" y="115" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">keypoints | error</text>
+        </g>
+        <defs><marker id="c" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      </svg>
+      <figcaption>The caller owns the request and the result. The library owns the order of stages and every intermediate buffer.</figcaption>
+    </figure>
+
+    <h2>5. Errors are part of the API</h2>
+    <p>Decide on an error strategy once. Exceptions are idiomatic in C++, but many vision libraries are consumed from code compiled with exceptions disabled or across language boundaries. A <code>std::variant</code> or an <code>expected</code>-style result type makes failure explicit in the signature and works in both worlds. Whichever you choose, document the failure modes next to the function:</p>
+    <ul>
+      <li>What does the call return for an empty image? An error, not a crash.</li>
+      <li>What does it return when the detector finds nothing? An empty vector, not an error. “No features” is a valid outcome.</li>
+      <li>Which failures are the caller’s fault (bad dimensions, unsupported channel count), and which are the library’s (allocation failure)?</li>
+    </ul>
+    <p>Those sentences are the API as much as the header file is. Write them as tests, too: one for each documented behavior.</p>
+
+    <h2>6. Threading and performance</h2>
+    <p>State the thread-safety contract plainly. A reasonable default: a <code>Pipeline</code> instance is not safe for concurrent use, but separate instances are independent, so callers create one per worker thread. That keeps the implementation free of locks and lets each instance own its workspace. If you need a shared pool, build it on top.</p>
+    <p>Measure before optimizing. Profile with realistic image sizes, watch memory bandwidth (most preprocessing is memory-bound), and look for avoidable copies at the boundary between your <code>ImageView</code> and OpenCV’s <code>Mat</code>: wrapping existing memory in a <code>Mat</code> header costs nothing, while cloning does. Expose parameters that trade quality for speed (resolution, feature count) as options instead of hard-coding them.</p>
+
+    <h2>7. Building and shipping a native library</h2>
+    <p>A native library that only compiles on its author’s machine is not a library yet. Treat the build as part of the product:</p>
+    <ul>
+      <li>Use CMake with exported targets so consumers can <code>find_package</code> the library and link a namespaced target.</li>
+      <li>Keep Bash build and setup scripts dull on purpose: create the build directory, configure the agreed compiler flags and OpenCV location, build, run tests, and install. A teammate should be able to read the script in a minute.</li>
+      <li>Pin the supported compiler and OpenCV versions in documentation and in CI, and build against more than one.</li>
+      <li>Compile with warnings as errors in CI, and run the test suite under AddressSanitizer and UndefinedBehaviorSanitizer. Leaks and out-of-bounds reads are exactly the bugs a pipeline library accumulates.</li>
+    </ul>
+
+    <pre><code>#!/usr/bin/env bash
+set -euo pipefail
+
+BUILD_DIR="${BUILD_DIR:-build}"
+cmake -S . -B "$BUILD_DIR" \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_CXX_STANDARD=17 \
+  -DVISION_ENABLE_SANITIZERS=ON
+cmake --build "$BUILD_DIR" -j"$(nproc)"
+ctest --test-dir "$BUILD_DIR" --output-on-failure</code></pre>
+
+    <h2>8. Testing an image pipeline</h2>
+    <p>Image code needs tests that respect its nature. Three layers work well:</p>
+    <ul>
+      <li><strong>Unit tests</strong> for each stage on tiny synthetic images (a white square on black, a gradient) where the right answer is obvious.</li>
+      <li><strong>Golden-image tests</strong> that run the pipeline on a small fixed set of real images and compare keypoints against stored results, with a tolerance. Detectors are not bit-exact across platforms, so compare statistics (count within a range, positions within a few pixels) instead of exact bytes.</li>
+      <li><strong>Failure-mode tests</strong> for each documented behavior: empty input, a single-channel image, a very large image, an image with no features.</li>
+    </ul>
+    <p>When a bug is found downstream, add its image to the golden set. That is how the library gets more reliable over time.</p>
+
+    <h2>9. The same principle in a React 18 migration</h2>
+    <p>The same ownership question appears in front-end modernization. Moving a legacy UI to React 18 is not a version bump in a lockfile. Concurrent rendering and the move from class lifecycles to hooks change when code runs: effects can run twice in development under StrictMode, renders can be interrupted and repeated, and state updates are batched differently. Code that quietly relied on the old lifecycle breaks in ways that look random, and some of it breaks in only one browser.</p>
+    <p>The discipline is the same as in the library: find the intermediate state and put it behind a contract. In the pipeline, the intermediate state is a buffer. In the React app, it is a render that assumed it would run exactly once. Make effects idempotent with proper cleanup (the front-end version of RAII), keep side effects out of render, and fix browser-specific failures before calling the migration stable. A migration that is green in one engine and broken in another is a demo with a favorite browser.</p>
+
+    <h2>10. Practice versus product</h2>
+    <p>Engineers who have worked hundreds of algorithm problems in C++ (trees, graphs, dynamic programming) have a real advantage: they can hold a structure in their head. But a library is judged differently. A graph problem tells you whether you can reason about a structure; a public API tells you whether someone else can use the structure without reading your mind. Both matter, and they are different skills. The second one is built out of boring decisions: a narrow header, an explicit error type, documented edge cases, a build anyone can run.</p>
+    <p>If you are designing such a library today, start from the failure modes. Write down what the call does with an empty image, what it does when nothing is detected, and whose fault each error is. Then keep the surface narrow. Teams adopt a library because it stays boring at the boundary.</p>
+    <p><a href="../index.html#writing">Back to writing</a></p>
   </main>
   <script src="../main.js"></script>
 </body>

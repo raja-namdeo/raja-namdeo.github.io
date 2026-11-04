@@ -36,7 +36,7 @@ function syncGmail() {
   const params = new URLSearchParams({
     view: "cm",
     fs: "1",
-    to: "cse.rajanamdeo@gmail.com",
+    to: "rajanamdeo2001@gmail.com",
     su: subject,
     body,
   });
@@ -62,7 +62,7 @@ chatForm?.addEventListener("submit", (event) => {
   const { subject, body } = mailParts();
   if (!subject || !body) return;
   const link = document.createElement("a");
-  link.href = `mailto:cse.rajanamdeo@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  link.href = `mailto:rajanamdeo2001@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   link.click();
 });
 

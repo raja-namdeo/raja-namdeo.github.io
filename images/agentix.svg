@@ -1,12 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="Agentix">
   <rect width="1600" height="900" fill="#f7f3ea"/>
   <g transform="translate(120 250)">
-    <circle cx="70" cy="200" r="18" fill="#161513"/>
-    <circle cx="210" cy="70" r="18" fill="#9a3b1a"/>
-    <circle cx="350" cy="200" r="18" fill="#161513"/>
-    <path d="M88 188 C130 120 150 90 192 78" fill="none" stroke="#161513" stroke-width="6" stroke-linecap="round"/>
-    <path d="M228 82 C270 110 310 150 338 182" fill="none" stroke="#161513" stroke-width="6" stroke-linecap="round"/>
-    <path d="M332 214 C250 250 170 250 88 214" fill="none" stroke="#9a3b1a" stroke-width="6" stroke-linecap="round"/>
+    <rect x="0" y="0" width="400" height="280" rx="28" fill="none" stroke="#161513" stroke-width="8"/>
+    <circle cx="36" cy="36" r="7" fill="#9a3b1a"/>
+    <circle cx="60" cy="36" r="7" fill="#161513" opacity="0.28"/>
+    <circle cx="84" cy="36" r="7" fill="#161513" opacity="0.28"/>
+    <rect x="112" y="28" width="150" height="16" rx="8" fill="#161513" opacity="0.18"/>
+    <circle cx="118" cy="168" r="26" fill="#161513"/>
+    <circle cx="200" cy="108" r="26" fill="#9a3b1a"/>
+    <circle cx="282" cy="168" r="26" fill="#161513"/>
+    <path d="M140 152 C158 118 176 112 178 112" fill="none" stroke="#161513" stroke-width="8" stroke-linecap="round"/>
+    <path d="M222 112 C246 118 262 140 266 148" fill="none" stroke="#161513" stroke-width="8" stroke-linecap="round"/>
+    <path d="M262 186 C230 230 170 230 138 186" fill="none" stroke="#9a3b1a" stroke-width="8" stroke-linecap="round"/>
+    <path d="M176 118 l8-10 2 12" fill="#161513"/>
+    <path d="M268 146 l12-2 -8 10" fill="#161513"/>
+    <path d="M136 190 l-12 4 8 8" fill="#9a3b1a"/>
   </g>
   <text x="620" y="400" fill="#161513" font-family="Georgia, 'Iowan Old Style', serif" font-size="112" letter-spacing="-2">Agentix</text>
   <text x="624" y="470" fill="#5e594f" font-family="Georgia, 'Iowan Old Style', serif" font-size="36">Open-source agent library</text>

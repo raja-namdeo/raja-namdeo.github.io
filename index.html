@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,550;0,6..72,650;1,6..72,450&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <script type="application/ld+json">
   {
@@ -20,7 +20,7 @@
     "@type": "Person",
     "name": "Raja Namdeo",
     "jobTitle": "Software Engineer",
-    "email": "mailto:cse.rajanamdeo@gmail.com",
+    "email": "mailto:rajanamdeo2001@gmail.com",
     "url": "https://raja-namdeo.github.io/",
     "sameAs": [
       "https://linkedin.com/in/raja-namdeo",
@@ -123,7 +123,7 @@
       <ul class="proof" aria-label="Highlights">
         <li><span>3+ years</span> shipping production software</li>
         <li><span>C++17</span> OpenCV library, real callers</li>
-        <li><span>Zendesk</span> Admin Center, every account</li>
+        <li><span>Zendesk</span> Platform engineering</li>
         <li><span>Applied AI</span> evals before release</li>
       </ul>
     </section>
@@ -239,50 +239,36 @@
     <section class="section" id="writing">
       <div class="section-label">
         <h2>Writing</h2>
-        <p>Notes on the production work.</p>
+        <p>Longer notes on the production work.</p>
       </div>
       <div class="cards">
         <article class="card">
           <p class="card-meta"><span>01</span> Platform engineering</p>
-          <h3>What I owned on Admin Center</h3>
-          <p>Secondary lead on the React migration inside unified navigation, on the Zendesk platform team. The slice I owned, and the boundary with the rest of the program.</p>
-          <p class="tags">React · TypeScript · Rails</p>
+          <h3>Platform engineering on Admin Center</h3>
+          <p>The React migration, the CI the platform team actually ran, and the Looker view Sales and Legal shared.</p>
+          <p class="tags">React · GitHub Actions · Looker</p>
           <a class="card-link" href="writing/admin-center-react.html">Read the note</a>
         </article>
         <article class="card">
           <p class="card-meta"><span>02</span> Applied AI</p>
           <h3>Scoring Admin Copilot before release</h3>
-          <p>The evaluation harness that scored recommendation quality before Admin Copilot reached Suite accounts.</p>
+          <p>The evaluation harness that scored recommendation quality before a recommendation reached a Suite account.</p>
           <p class="tags">Evaluation · Prompting · CI</p>
           <a class="card-link" href="writing/admin-copilot-evaluation.html">Read the note</a>
         </article>
         <article class="card">
           <p class="card-meta"><span>03</span> C++17</p>
           <h3>A public API for an image pipeline</h3>
-          <p>OpenCV feature detection and preprocessing behind one API at Persistent Systems. Callers did not manage the pipeline’s memory.</p>
-          <p class="tags">C++17 · OpenCV · RAII</p>
+          <p>OpenCV, RAII, and the React 18 migration that sat beside that library at Persistent Systems.</p>
+          <p class="tags">C++17 · OpenCV · React 18</p>
           <a class="card-link" href="writing/cpp-opencv-library.html">Read the note</a>
         </article>
         <article class="card">
-          <p class="card-meta"><span>04</span> React</p>
-          <h3>Moving a legacy frontend to React 18</h3>
-          <p>Concurrent rendering, hooks, and the cross-browser bugs that showed up when a live Persistent Systems frontend moved to React 18.</p>
-          <p class="tags">React 18 · Hooks · Browsers</p>
-          <a class="card-link" href="writing/react-18-migration.html">Read the note</a>
-        </article>
-        <article class="card">
-          <p class="card-meta"><span>05</span> Platform engineering</p>
-          <h3>CI the platform team actually ran</h3>
-          <p>GitHub Actions for the Zendesk platform team, including the PR-description generator and code reviewer that team adopted.</p>
-          <p class="tags">GitHub Actions · Testing · Applied AI</p>
-          <a class="card-link" href="writing/platform-ci.html">Read the note</a>
-        </article>
-        <article class="card">
-          <p class="card-meta"><span>06</span> Business intelligence</p>
-          <h3>One Looker view for Sales and Legal</h3>
-          <p>Looker dashboards for account and API usage, so Sales and Legal opened the same customer view.</p>
-          <p class="tags">Looker · Sales · Legal</p>
-          <a class="card-link" href="writing/looker-customer-view.html">Read the note</a>
+          <p class="card-meta"><span>04</span> System design</p>
+          <h3>Two small systems, drawn the long way</h3>
+          <p>How I would design a bounded agent runtime and an embeddable dashboard, written the way a design note should read.</p>
+          <p class="tags">Agents · Embeds · Boundaries</p>
+          <a class="card-link" href="writing/system-design.html">Read the note</a>
         </article>
       </div>
     </section>
@@ -313,21 +299,23 @@
           <p class="card-meta"><span>03</span> Open source</p>
           <img class="card-shot" src="images/agentix.svg" alt="Agentix brand mark" />
           <h3>Agentix</h3>
-          <p>Open-source TypeScript library for any web app that needs an agent. Tool registration, a bounded multi-step loop, memory, a provider-agnostic model interface, and an evaluation harness, plus a widget and a console. TopperCompass is one product that uses it.</p>
-          <p class="tags">TypeScript · React · OpenRouter · Evals</p>
+          <p>Open-source TypeScript package for any web app that needs an agent. Tool registration, a bounded loop, memory, an OpenRouter provider, and an eval runner. TopperCompass is one product that can use it.</p>
+          <p class="tags">TypeScript · OpenRouter · Evals</p>
+          <a class="card-link" href="https://github.com/raja-namdeo/agentix" target="_blank" rel="noopener">GitHub</a>
         </article>
         <article class="card">
           <p class="card-meta"><span>04</span> Open source</p>
           <img class="card-shot" src="images/embedash.svg" alt="Embedash brand mark" />
           <h3>Embedash</h3>
-          <p>Open-source embeddable analytics. A Rails API, PostgreSQL, and Redis sit behind a React and Recharts dashboard any page can load from a script tag. TopperCompass is one product that embeds it.</p>
-          <p class="tags">Rails · PostgreSQL · Redis · React</p>
+          <p>Open-source package that mounts a bar chart, a line, and a metric from JSON. The host page keeps the data and loads one script. TopperCompass is one product that can embed it.</p>
+          <p class="tags">TypeScript · Dashboard · Script tag</p>
+          <a class="card-link" href="https://github.com/raja-namdeo/embedash" target="_blank" rel="noopener">GitHub</a>
         </article>
         <article class="card">
-          <p class="card-meta"><span>05</span> 2025–26 · Zendesk</p>
+          <p class="card-meta"><span>05</span> Platform engineering · Zendesk</p>
           <h3>Admin Center, on React</h3>
-          <p>Unified navigation for every Zendesk account. I was secondary lead on the Admin Center migration, from the React surface through the framework other product teams build on.</p>
-          <p class="tags">React · TypeScript · Rails</p>
+          <p>Platform engineering on Admin Center. I was secondary lead on the React migration, from the product surface through the framework other teams build on.</p>
+          <p class="tags">Platform engineering · React · TypeScript</p>
           <p class="card-note">Employer work. No public repo.</p>
         </article>
         <article class="card">
@@ -448,7 +436,7 @@
       <div>
         <p class="contact-title">Open for the next role.</p>
         <p class="contact-sub">Frontend, full-stack, or platform engineering. I answer email.</p>
-        <p class="contact-mail"><a href="mailto:cse.rajanamdeo@gmail.com">cse.rajanamdeo@gmail.com</a></p>
+        <p class="contact-mail"><a href="mailto:rajanamdeo2001@gmail.com">rajanamdeo2001@gmail.com</a></p>
         <p class="contact-phone"><a href="tel:+916263269310">+91 62632 69310</a></p>
         <div class="hero-links">
           <a class="btn" href="https://linkedin.com/in/raja-namdeo" target="_blank" rel="noopener">LinkedIn</a>
@@ -469,7 +457,7 @@
       <textarea id="chat-message" name="message" rows="4" required>Hi Raja, I would like to talk about a role.</textarea>
       <div class="chat-actions">
         <button class="btn" type="submit">Send</button>
-        <a class="btn btn-ghost" id="chat-gmail" href="https://mail.google.com/mail/?view=cm&amp;fs=1&amp;to=cse.rajanamdeo@gmail.com" target="_blank" rel="noopener">Open in Gmail</a>
+        <a class="btn btn-ghost" id="chat-gmail" href="https://mail.google.com/mail/?view=cm&amp;fs=1&amp;to=rajanamdeo2001@gmail.com" target="_blank" rel="noopener">Open in Gmail</a>
       </div>
     </form>
     <button class="chat-toggle" type="button" aria-expanded="false" aria-controls="chat-panel">

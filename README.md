@@ -7,7 +7,7 @@ Static site. No build step and no dependencies. `index.html` is the homepage.
 - `index.html` — homepage
 - `styles.css`, `main.js`, `favicon.svg`
 - `images/` — portrait and project screenshots
-- `writing/` — six articles linked from the homepage
+- `writing/` — four articles linked from the homepage
 
 The résumé button points at a Google Drive folder. Job-hunt notes live outside this folder.
 

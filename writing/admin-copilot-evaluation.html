@@ -3,12 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Scoring Admin Copilot before release — Raja Namdeo</title>
-  <meta name="description" content="Raja Namdeo built the AI evaluation harness for Zendesk Admin Copilot, an applied-AI assistant for administrators shipped to Suite Professional and above. Skills: applied AI, evaluation harnesses, prompt templates, React, GitHub Actions." />
+  <title>Scoring an AI assistant before it ships — Raja Namdeo</title>
+  <meta name="description" content="An engineering guide to evaluating an applied-AI assistant before release: rubrics, case sets, graders, prompt templates as code, CI gating, nondeterminism, and a minimal TypeScript harness." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600&family=Newsreader:opsz,wght@6..72,400;6..72,550&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../styles.css?v=5" />
+  <link rel="stylesheet" href="../styles.css?v=6" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <style>
+    .media { position: relative; aspect-ratio: 16 / 9; width: 100%; overflow: hidden; border-radius: 8px; background: rgba(127,127,127,.10); }
+    .media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .media.contain img { object-fit: contain; }
+    .media-fallback { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; padding: 24px; text-align: center; font: 500 14px/1.5 "Instrument Sans", system-ui, sans-serif; opacity: .7; border: 1px dashed rgba(127,127,127,.5); border-radius: 8px; }
+    .media.is-missing img { display: none; }
+    .media.is-missing .media-fallback { display: flex; }
+    .diagram { width: 100%; height: auto; display: block; color: inherit; }
+    .post pre { overflow-x: auto; padding: 16px; border-radius: 8px; background: rgba(127,127,127,.10); font-size: 14px; line-height: 1.55; }
+    .post code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -42,18 +53,161 @@
     <a href="https://drive.google.com/drive/folders/1Tm4S_pmPTaO8bRm-43lsX8sl1SN7FCRW?usp=drive_link" target="_blank" rel="noopener">Résumé</a>
   </div>
   <main class="post">
-    <p class="eyebrow">Zendesk · Applied AI · 2025 – 2026</p>
-    <h1>Scoring Admin Copilot before release</h1>
-    <p>Admin Copilot is Zendesk’s agentic assistant for administrators. It offers insights, recommendations, and conversational help, and it shipped to Suite Professional and above. My piece was the evaluation harness that scored recommendation quality before a recommendation reached a real account.</p>
-    <p>Calling a model is not the product. The product is a recommendation an admin can trust. Evaluation is how we checked that, with a rubric and a run of cases, before release. That is applied AI: the model sits next to a test, a prompt template, and a person who can reject a bad suggestion.</p>
-    <h2>What the harness was for</h2>
+    <p class="eyebrow">Engineering · Applied AI · Evaluation</p>
+    <h1>Scoring an AI assistant before it ships</h1>
+    <p>An assistant that recommends actions to administrators, such as which setting to change, which policy to tighten, or which integration to disable, has a different risk profile from a chatbot that answers trivia. A wrong answer is not just unhelpful. If the user acts on it, they pay for it in a change they did not mean to make, a feature they locked themselves out of, or time spent undoing the damage. The engineering problem is putting a check in front of that moment.</p>
+    <p>This article describes how to build that check: an evaluation harness that scores an assistant’s output before it reaches real accounts, runs in CI like any other test, and fails on purpose when something regresses. The examples use an admin-style assistant, but the approach applies to any agentic or recommendation-producing system.</p>
+
+    <h2>1. Why a demo is not a release criterion</h2>
+    <p>A demo shows the model at its best on inputs chosen by the person demonstrating. Production shows the model on inputs nobody anticipated, in accounts with unusual configurations, asked by users who phrase things in ways you would not. The gap between those two is where incidents live.</p>
+    <p>A useful way to think about it: a demo answers “can the model do this?”, and an evaluation answers “how often does the system do this correctly, and what does it do when it is wrong?” Release decisions need the second answer, and they need it as a number you can compare between versions.</p>
+
+    <figure>
+      <div class="media contain">
+        <img src="../images/writing/client-server.svg" width="1280" height="720" loading="lazy" alt="Diagram of a client talking to a server" onerror="this.parentNode.classList.add('is-missing')" />
+        <div class="media-fallback" role="img" aria-label="Diagram placeholder: a client and a server exchanging requests">Image unavailable: a client sending requests to a server. An evaluation harness is a contract of the same kind: nothing crosses into a real account until a case has looked at it.</div>
+      </div>
+      <figcaption>The smallest picture of a contract. The harness sits on the path between model output and a real account. Diagram by Lubaochuan, via Wikimedia Commons, CC BY-SA 4.0.</figcaption>
+    </figure>
+
+    <h2>2. Start with failure modes, not features</h2>
+    <p>Before writing any cases, list the ways the assistant can be wrong. For a recommendation assistant, the list is usually short and specific:</p>
     <ul>
-      <li>Score recommendation quality before release, not after an admin has already applied it.</li>
-      <li>Keep prompt changes in one place instead of scattering them through the codebase.</li>
-      <li>Pair the eval with CI so a prompt or code change had a report, not only a green unit test.</li>
+      <li><strong>Hallucinated capability.</strong> It recommends a setting, plan feature, or API that does not exist, or exists only on a higher tier.</li>
+      <li><strong>Out-of-scope action.</strong> It recommends something the account’s role or plan does not permit.</li>
+      <li><strong>Unsafe sequencing.</strong> It skips a prerequisite or suggests steps in an order that locks the user out, for example disabling an authentication method before enabling its replacement.</li>
+      <li><strong>Confident but stale.</strong> It states a policy or default that changed after the model’s training data was collected.</li>
+      <li><strong>Over-eager.</strong> It recommends a change when the right answer is “nothing needs to change” or “ask an owner.”</li>
+      <li><strong>Leakage.</strong> It exposes information about another account or an internal detail it should not repeat.</li>
     </ul>
-    <p>The same habit shows up in Agentix, my open-source TypeScript library. Tool calls, a bounded multi-step loop, memory, and an evaluation harness are the library. The eval is not an afterthought.</p>
-    <p><a href="../index.html#work">Back to work</a></p>
+    <p>Notice that fluency appears nowhere on that list. Fluency is cheap; modern models are fluent when they are wrong. The dangerous failure is the confident, well-written, incorrect answer, which looks fine in a screenshot and fails in an account.</p>
+
+    <h2>3. Cases and rubrics</h2>
+    <p>An evaluation case is an input plus a definition of what acceptable behavior means. A good case has four parts:</p>
+    <ul>
+      <li><strong>Input:</strong> the user’s message, plus the context the assistant would receive in production (account plan, enabled features, relevant configuration).</li>
+      <li><strong>Fixture:</strong> a frozen snapshot of the account state the assistant may consult, so the case is reproducible.</li>
+      <li><strong>Checks:</strong> assertions about the output, from strictest to loosest.</li>
+      <li><strong>Tags:</strong> which failure mode the case probes, so a regression report can say “hallucinated capability: 3 of 40 failing” instead of “score dropped.”</li>
+    </ul>
+    <p>Build the set from three sources. <strong>Golden cases</strong> are the common questions you expect most users to ask; they establish a baseline. <strong>Adversarial cases</strong> are written to provoke each failure mode on the list above: ask about a feature that does not exist, ask for something the plan does not include, ask a question whose correct answer is “you do not need to do anything.” <strong>Regression cases</strong> come from real incidents: every time a bad recommendation is found in production or in review, the exact input becomes a permanent case.</p>
+
+    <h2>4. Graders: from deterministic to judged</h2>
+    <p>Prefer the strictest check that can express the requirement, and fall back to a looser one only when you must.</p>
+    <ol>
+      <li><strong>Structural checks.</strong> If the assistant returns structured output, validate it against a schema. Reject malformed output outright.</li>
+      <li><strong>Reference checks.</strong> Every setting or feature the answer names must exist in the account’s catalog. This is a deterministic lookup against a source of truth, and it catches hallucinated capabilities with no model involved.</li>
+      <li><strong>Behavioral checks.</strong> For tool-using assistants, assert on the trace: the assistant called the lookup tool before recommending a change, it did not call a write tool, it stopped within the step budget.</li>
+      <li><strong>Rubric-based model grading.</strong> For qualities that resist code, such as “explains the tradeoff” or “asks a clarifying question when the request is ambiguous,” use a second model as a judge with an explicit rubric and a constrained output (pass/fail plus a reason).</li>
+      <li><strong>Human review.</strong> A sample of judged outputs is read by a person on a regular cadence, to check that the judge agrees with human judgment.</li>
+    </ol>
+    <p>Model graders deserve skepticism. They can be lenient toward fluent text, sensitive to prompt wording, and biased toward answers that resemble their own style. Calibrate them: hand-label a set of outputs, measure agreement with the judge, and track it. If agreement is low, tighten the rubric or move that check to a deterministic grader.</p>
+
+    <figure>
+      <svg class="diagram" viewBox="0 0 720 280" role="img" aria-label="Pipeline diagram: change to prompt or code triggers CI, which runs the case set against the assistant, applies graders, produces a report, and gates the release.">
+        <title>Evaluation in CI</title>
+        <g fill="none" stroke="currentColor" stroke-width="1.5" font-family="system-ui, sans-serif" font-size="13">
+          <rect x="20" y="30" width="120" height="60" rx="8"/>
+          <text x="80" y="57" text-anchor="middle" fill="currentColor" stroke="none">Change</text>
+          <text x="80" y="75" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">prompt or code</text>
+          <rect x="170" y="30" width="120" height="60" rx="8"/>
+          <text x="230" y="57" text-anchor="middle" fill="currentColor" stroke="none">CI run</text>
+          <text x="230" y="75" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">on every PR</text>
+          <rect x="320" y="30" width="130" height="60" rx="8"/>
+          <text x="385" y="57" text-anchor="middle" fill="currentColor" stroke="none">Assistant</text>
+          <text x="385" y="75" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">N cases x K runs</text>
+          <rect x="480" y="30" width="110" height="60" rx="8"/>
+          <text x="535" y="57" text-anchor="middle" fill="currentColor" stroke="none">Graders</text>
+          <text x="535" y="75" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">rules + judge</text>
+          <rect x="620" y="30" width="80" height="60" rx="8"/>
+          <text x="660" y="65" text-anchor="middle" fill="currentColor" stroke="none">Report</text>
+          <path d="M140 60H170M290 60H320M450 60H480M590 60H620" marker-end="url(#b)"/>
+          <rect x="170" y="150" width="260" height="90" rx="8" stroke-dasharray="6 4"/>
+          <text x="300" y="178" text-anchor="middle" fill="currentColor" stroke="none">Gate</text>
+          <text x="300" y="198" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">any critical case fails: block</text>
+          <text x="300" y="216" text-anchor="middle" fill="currentColor" stroke="none" opacity=".7">pass rate drops > threshold: block</text>
+          <path d="M660 90V195H430" marker-end="url(#b)"/>
+        </g>
+        <defs><marker id="b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+      </svg>
+      <figcaption>An evaluation that runs when the prompt or calling code changes is a test. One that a person runs on Friday afternoon is a demo.</figcaption>
+    </figure>
+
+    <h2>5. Prompt templates are production code</h2>
+    <p>If a prompt is copied into three call sites, those copies will drift, and the evaluation will end up scoring a prompt the product no longer runs. Keep each prompt template in one module, version it with the code, and make the evaluation import the same template the product uses.</p>
+    <p>A change in wording is a change in behavior. Review it like a code change, and expect the evaluation report to move with it. A practical convention is to put the template, its variables, and the cases that describe its intended behavior in neighboring files, so a pull request that touches one visibly touches the others.</p>
+
+    <pre><code>// prompts/recommend.ts: the only place this prompt exists
+export const RECOMMEND_V3 = {
+  id: "recommend@3",
+  system: `You advise administrators. Only recommend settings listed in CATALOG.
+If no change is needed, say so. Never recommend disabling an authentication
+method without naming its replacement.`,
+  render: (q: string, catalog: string[]) =&gt;
+    `CATALOG:\n${catalog.join("\n")}\n\nQUESTION:\n${q}`,
+};</code></pre>
+
+    <h2>6. Dealing with nondeterminism</h2>
+    <p>Language models are stochastic, so a single run of a case tells you little. Two practical measures help. First, lower the temperature for evaluation runs where you can, so differences between runs reflect real changes. Second, run each case several times and report the pass rate per case. A case that passes five of five is solid; one that passes three of five is a finding, even if the average looks fine.</p>
+    <p>For gating, separate <strong>critical</strong> cases (a single failure blocks the release, like recommending an unsafe sequence) from <strong>aggregate</strong> cases (the release is blocked if the pass rate drops by more than a threshold relative to the last released version). Store results from each run so that a drop can be traced to the change that caused it.</p>
+
+    <h2>7. A minimal harness</h2>
+    <p>The harness does not need to be elaborate. A case runner, a set of graders, and a report are enough to start. The important design decision is that the runner builds the agent the same way the product does, but the agent does not know it is being graded.</p>
+
+    <pre><code>type Check = (output: string, trace: Trace) =&gt; { ok: boolean; why?: string };
+
+type Case = {
+  id: string;
+  tag: "hallucination" | "scope" | "sequencing" | "no-op";
+  critical?: boolean;
+  input: string;
+  catalog: string[];
+  checks: Check[];
+};
+
+export async function runSuite(cases: Case[], agent: Agent, runs = 5) {
+  const rows = [];
+  for (const c of cases) {
+    let pass = 0;
+    const reasons: string[] = [];
+    for (let i = 0; i &lt; runs; i++) {
+      const { output, trace } = await agent.run(c.input, { catalog: c.catalog });
+      const results = c.checks.map((k) =&gt; k(output, trace));
+      if (results.every((r) =&gt; r.ok)) pass++;
+      else reasons.push(...results.filter((r) =&gt; !r.ok).map((r) =&gt; r.why ?? "failed"));
+    }
+    rows.push({ id: c.id, tag: c.tag, critical: !!c.critical, pass, runs, reasons });
+  }
+  return rows;
+}
+
+// Example deterministic check: every named setting must exist in the catalog.
+export const namesOnlyKnownSettings =
+  (known: Set&lt;string&gt;): Check =&gt; (out) =&gt; {
+    const named = [...out.matchAll(/`([^`]+)`/g)].map((m) =&gt; m[1]);
+    const bad = named.filter((n) =&gt; !known.has(n));
+    return bad.length ? { ok: false, why: `unknown settings: ${bad.join(", ")}` } : { ok: true };
+  };</code></pre>
+
+    <h2>8. Making CI trustworthy</h2>
+    <p>The report belongs in the pull request, not in a spreadsheet. A good report lists the pass rate by tag, the cases that changed status since the last release, and the reasons for each failure. That gives the reviewer something more useful than a diff of prompt strings: a drop on one case is a conversation, and a drop across the set is a reason to hold the change.</p>
+    <p>Keep unit tests too. They tell you a function returned the shape you coded. They cannot tell you whether a recommendation is one you would let an administrator apply. The two layers answer different questions, and an evaluation is the layer that understands model output.</p>
+    <p>Finally, watch cost and time. A full suite with several runs per case and a model judge can be slow and expensive. Split it: a small smoke subset on every pull request, and the full suite on merge to main and before release.</p>
+
+    <h2>9. Common ways an evaluation lies</h2>
+    <ul>
+      <li><strong>It cannot fail.</strong> If every check is loose enough that any answer passes, the suite always prints green. Keep at least one case written to fail if someone loosens a guard or removes a tool, and verify that it does.</li>
+      <li><strong>It tests a different prompt than production.</strong> Share the template module.</li>
+      <li><strong>The set is stale.</strong> If cases never change, they measure the product you shipped last year. Add incident-derived cases continuously.</li>
+      <li><strong>Judge and system share a blind spot.</strong> If the same model family generates and grades, check agreement against human labels.</li>
+      <li><strong>Averages hide critical failures.</strong> Gate critical cases separately.</li>
+      <li><strong>Contaminated cases.</strong> If case inputs leak into prompts as few-shot examples, the suite measures memorization.</li>
+    </ul>
+
+    <h2>10. Closing the loop after release</h2>
+    <p>Evaluation before release is half of the story. In production, record the recommendation, whether the user accepted it, and whether they reverted it shortly afterward. A recommendation that is accepted and then undone within minutes is a strong signal of a bad answer, and it is also a ready-made new regression case. Feed those back into the suite, and the harness gets better at catching the failures your users actually hit.</p>
+    <p>The principle underneath all of this is simple: show the recommendation to a check before a person has to trust it. Everything else in an agent product is either a way of getting to that moment or a way of avoiding it.</p>
+    <p><a href="../index.html#writing">Back to writing</a></p>
   </main>
   <script src="../main.js"></script>
 </body>
